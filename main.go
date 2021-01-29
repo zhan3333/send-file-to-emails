@@ -7,7 +7,9 @@ import (
 	"gopkg.in/gomail.v2"
 	"os"
 	"send-fiule-to-emails/cache"
+	"send-fiule-to-emails/util"
 	"strconv"
+	"strings"
 	"time"
 )
 import "github.com/360EntSecGroup-Skylar/excelize/v2"
@@ -49,8 +51,13 @@ func main() {
 			fmt.Printf("%s 邮件已发送, 跳过处理\n", name)
 			continue
 		}
-		file := fmt.Sprintf("files/%s.docx", name)
-		if !cache.IsFileExists(file) {
+		file, err := util.FindFileName1(name, "files")
+		if err != nil {
+			fmt.Printf("%s 未找到匹配文件, 跳过处理\n", name)
+			failedNames = append(failedNames, name)
+			continue
+		}
+		if !util.IsFileExists(file) {
 			fmt.Printf("%s 待发送文件不存在, 跳过处理\n", name)
 			failedNames = append(failedNames, name)
 			continue
@@ -73,7 +80,7 @@ func main() {
 type KeyEmailMap map[string]string
 
 func ReadNameEmails(excelPath string) (KeyEmailMap, error) {
-	if !cache.IsFileExists(excelPath) {
+	if !util.IsFileExists(excelPath) {
 		return nil, fmt.Errorf("%s 不存在", excelPath)
 	}
 	keyEmails := KeyEmailMap{}
@@ -83,20 +90,27 @@ func ReadNameEmails(excelPath string) (KeyEmailMap, error) {
 	}
 	rows, err := f.GetRows(f.GetSheetList()[0])
 	for _, row := range rows {
+		if len(row) < 2 {
+			continue
+		}
+		if row[0] == "" || row[1] == "" {
+			continue
+		}
 		keyEmails[row[0]] = row[1]
 	}
 	return keyEmails, nil
 }
 
 func SendFile(name string, email string, file string) error {
-	sendFileName := fmt.Sprintf("%s成绩单.docx", name)
+	t := strings.Split(file, "/")
+	fileName := t[len(t)-1]
 	m := gomail.NewMessage()
 	m.SetHeader("From", os.Getenv("EMAIL_FROM"))
 	m.SetHeader("To", email)
 	m.SetHeader("Subject", fmt.Sprintf("%s成绩单", name))
 	h := make(map[string][]string, 0)
-	h["Content-Type"] = []string{fmt.Sprintf(`application/octet-stream; charset=utf-8; name="%s成绩单.docx"`, name)} //要设置这个，否则中文会乱码
+	h["Content-Type"] = []string{fmt.Sprintf(`application/octet-stream; charset=utf-8; name="%s"`, fileName)} //要设置这个，否则中文会乱码
 	fileSetting := gomail.SetHeader(h)
-	m.Attach(file, fileSetting, gomail.Rename(sendFileName))
+	m.Attach(file, fileSetting, gomail.Rename(fileName))
 	return mail.DialAndSend(m)
 }
